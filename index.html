@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>카드 뒤집기 게임</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 { margin: 0 0 16px; font-size: 1.8rem; }
+    .info {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 16px;
+      font-size: 1.1rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      width: min(92vw, 400px);
+      max-width: 400px;
+      margin-bottom: 16px;
+    }
+    .card-wrap {
+      aspect-ratio: 1;
+      cursor: pointer;
+      perspective: 600px;
+    }
+    .card {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transition: transform 0.5s;
+      transform-style: preserve-3d;
+    }
+    .card-wrap.flipped .card { transform: rotateY(180deg); }
+    .card-wrap.matched { cursor: default; }
+    .card-face {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+    }
+    .card-front {
+      background: linear-gradient(145deg, #0f3460, #16213e);
+      border: 2px solid #e94560;
+    }
+    .card-back {
+      background: linear-gradient(145deg, #e94560, #c73e54);
+      transform: rotateY(180deg);
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    .modal.show { display: flex; }
+    .modal-inner {
+      background: #1a1a2e;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid #e94560;
+      min-width: 280px;
+    }
+    .modal-inner h2 { margin-top: 0; }
+    .modal-inner input {
+      width: 100%;
+      padding: 10px;
+      margin: 12px 0;
+      font-size: 1rem;
+      border: 1px solid #e94560;
+      border-radius: 6px;
+      background: #16213e;
+      color: #eee;
+    }
+    .modal-inner button {
+      width: 100%;
+      padding: 10px;
+      font-size: 1rem;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .modal-inner button:hover { background: #c73e54; }
+    .modal-inner button:last-of-type {
+      background: #333;
+      margin-top: 4px;
+    }
+    .modal-inner button:last-of-type:hover { background: #444; }
+    #failModal .modal-inner { border-color: #888; }
+    #failModal .modal-inner h2 { color: #f66; }
+    .leaderboard {
+      width: 100%;
+      max-width: 400px;
+      margin-top: 8px;
+    }
+    .start-btn {
+      padding: 10px 24px;
+      font-size: 1rem;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-bottom: 24px;
+    }
+    .start-btn:hover { background: #c73e54; }
+    .leaderboard h3 { margin: 0 0 8px; font-size: 1rem; }
+    .leaderboard ol {
+      margin: 0;
+      padding-left: 20px;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+    .leaderboard li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>카드 뒤집기</h1>
+  <div class="info">
+    <span>이동: <strong id="moves">0</strong></span>
+    <span>시간: <strong id="timer">0</strong> / 60초</span>
+  </div>
+  <div class="grid" id="grid"></div>
+  <button type="button" class="start-btn" id="startBtn">시작</button>
+
+  <div class="modal" id="winModal">
+    <div class="modal-inner">
+      <h2>클리어!</h2>
+      <p>이동: <strong id="finalMoves">0</strong> / 시간: <strong id="finalTime">0</strong>초</p>
+      <input type="text" id="playerName" placeholder="닉네임 입력" maxlength="20">
+      <button type="button" id="saveScore">기록 저장</button>
+      <button type="button" id="closeModal">닫기</button>
+    </div>
+  </div>
+
+  <div class="modal" id="failModal">
+    <div class="modal-inner">
+      <h2>실패!</h2>
+      <p>1분 안에 완료하지 못했습니다.</p>
+      <button type="button" id="retryBtn">다시 하기</button>
+    </div>
+  </div>
+
+  <div class="leaderboard">
+    <h3>순위 (이동 적은 순)</h3>
+    <ol id="rankList"></ol>
+  </div>
+
+  <script>
+    (function () {
+      var SUPABASE_URL = 'https://jpcwzwufamtwcrruveom.supabase.co';
+      var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3d6d3VmYW10d2NycnV2ZW9tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MTg4NTAsImV4cCI6MjA4NTA5NDg1MH0.UXd4VN4jpGqr3HbghhCzFx7adrpwJVzDTbTmT64JvGw';
+
+      var EMOJIS = ['🍎','🍊','🍋','🍇','🍓','🍑','🍒','🥝'];
+      var TIME_LIMIT = 60;
+      var moves = 0, startTime = null, timerId = null, flipped = [], matched = 0, finalDurationSec = 0, gameStarted = false, gameFailed = false;
+
+      var gridEl = document.getElementById('grid');
+      var movesEl = document.getElementById('moves');
+      var timerEl = document.getElementById('timer');
+      var winModal = document.getElementById('winModal');
+      var playerNameEl = document.getElementById('playerName');
+      var saveBtn = document.getElementById('saveScore');
+      var rankList = document.getElementById('rankList');
+      var startBtn = document.getElementById('startBtn');
+
+      function startTimer() {
+        if (timerId) return;
+        startTime = Date.now();
+        timerId = setInterval(function () {
+          var elapsed = Math.floor((Date.now() - startTime) / 1000);
+          timerEl.textContent = elapsed;
+          if (elapsed >= TIME_LIMIT && matched < 16) {
+            clearInterval(timerId);
+            timerId = null;
+            failGame();
+          }
+        }, 1000);
+      }
+
+      function buildDeck() {
+        var arr = EMOJIS.concat(EMOJIS);
+        for (var i = arr.length - 1; i > 0; i--) {
+          var j = Math.floor(Math.random() * (i + 1));
+          var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+        }
+        return arr;
+      }
+
+      function render() {
+        gridEl.innerHTML = '';
+        var deck = buildDeck();
+        for (var i = 0; i < 16; i++) {
+          var wrap = document.createElement('div');
+          wrap.className = 'card-wrap';
+          wrap.dataset.index = i;
+          wrap.innerHTML = '<div class="card">' +
+            '<div class="card-face card-front"></div>' +
+            '<div class="card-face card-back">' + deck[i] + '</div></div>';
+          wrap.addEventListener('click', onCardClick);
+          gridEl.appendChild(wrap);
+        }
+      }
+
+      function onCardClick(e) {
+        var wrap = e.currentTarget;
+        if (gameFailed) return;
+        if (flipped.length >= 2) return;
+        if (wrap.classList.contains('flipped') || wrap.classList.contains('matched')) return;
+        startTimer();
+        wrap.classList.add('flipped');
+        flipped.push(wrap);
+        if (flipped.length === 2) {
+          moves++;
+          movesEl.textContent = moves;
+          var v0 = flipped[0].querySelector('.card-back').textContent;
+          var v1 = flipped[1].querySelector('.card-back').textContent;
+          if (v0 === v1) {
+            flipped[0].classList.add('matched');
+            flipped[1].classList.add('matched');
+            flipped = [];
+            matched += 2;
+            if (matched === 16) endGame();
+          } else {
+            setTimeout(function () {
+              flipped[0].classList.remove('flipped');
+              flipped[1].classList.remove('flipped');
+              flipped = [];
+            }, 600);
+          }
+        }
+      }
+
+      function endGame() {
+        clearInterval(timerId);
+        timerId = null;
+        finalDurationSec = Math.floor((Date.now() - startTime) / 1000);
+        document.getElementById('finalMoves').textContent = moves;
+        document.getElementById('finalTime').textContent = finalDurationSec;
+        winModal.classList.add('show');
+      }
+
+      function failGame() {
+        gameFailed = true;
+        document.getElementById('failModal').classList.add('show');
+      }
+
+      function saveScore() {
+        var name = (playerNameEl.value || '익명').trim().slice(0, 20);
+        var sec = finalDurationSec;
+        fetch(SUPABASE_URL + '/rest/v1/card_flip_scores', {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON,
+            'Authorization': 'Bearer ' + SUPABASE_ANON,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify({
+            moves: moves,
+            player_name: name,
+            duration_seconds: sec
+          })
+        }).then(function () {
+          winModal.classList.remove('show');
+          loadLeaderboard();
+          resetGame();
+        }).catch(function (err) {
+          alert('저장 실패: ' + (err && err.message ? err.message : '네트워크 오류'));
+        });
+      }
+
+      function loadLeaderboard() {
+        fetch(SUPABASE_URL + '/rest/v1/card_flip_scores?select=player_name,moves,duration_seconds&order=moves.asc&limit=10', {
+          headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (rows) {
+            rankList.innerHTML = rows.map(function (r, i) {
+              return '<li>' + (i + 1) + '. ' + (r.player_name || '익명') + ' — ' + r.moves + '이동, ' + Number(r.duration_seconds) + '초</li>';
+            }).join('') || '<li>아직 기록 없음</li>';
+          })
+          .catch(function () { rankList.innerHTML = '<li>순위 불러오기 실패</li>'; });
+      }
+
+      function resetGame() {
+        gameFailed = false;
+        moves = 0;
+        flipped = [];
+        matched = 0;
+        startTime = null;
+        clearInterval(timerId);
+        timerId = null;
+        movesEl.textContent = '0';
+        timerEl.textContent = '0';
+        document.getElementById('failModal').classList.remove('show');
+        render();
+      }
+
+      saveBtn.addEventListener('click', saveScore);
+      document.getElementById('closeModal').addEventListener('click', function () {
+        winModal.classList.remove('show');
+        resetGame();
+      });
+      document.getElementById('retryBtn').addEventListener('click', function () {
+        document.getElementById('failModal').classList.remove('show');
+        resetGame();
+      });
+      startBtn.addEventListener('click', function () {
+        if (!gameStarted) {
+          gameStarted = true;
+          startBtn.textContent = '재시작';
+          render();
+        } else {
+          resetGame();
+        }
+      });
+      loadLeaderboard();
+      render();
+    })();
+  </script>
+</body>
+</html>
