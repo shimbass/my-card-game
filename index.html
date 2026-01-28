@@ -170,10 +170,12 @@
     <ol id="rankList"></ol>
   </div>
 
+  <script src="config.js"></script>
   <script>
     (function () {
-      var SUPABASE_URL = 'https://jpcwzwufamtwcrruveom.supabase.co';
-      var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpwY3d6d3VmYW10d2NycnV2ZW9tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1MTg4NTAsImV4cCI6MjA4NTA5NDg1MH0.UXd4VN4jpGqr3HbghhCzFx7adrpwJVzDTbTmT64JvGw';
+      var SUPABASE_URL = window.SUPABASE_URL;
+      var SUPABASE_ANON = window.SUPABASE_ANON;
+      var hasSupabase = !!(SUPABASE_URL && SUPABASE_ANON);
 
       var EMOJIS = ['🍎','🍊','🍋','🍇','🍓','🍑','🍒','🥝'];
       var TIME_LIMIT = 60;
@@ -270,6 +272,10 @@
       }
 
       function saveScore() {
+        if (!hasSupabase) {
+          alert('Supabase 설정이 없습니다. config.example.js 를 config.js 로 복사한 뒤 URL·anon key 를 입력하세요.');
+          return;
+        }
         var name = (playerNameEl.value || '익명').trim().slice(0, 20);
         var sec = finalDurationSec;
         fetch(SUPABASE_URL + '/rest/v1/card_flip_scores', {
@@ -295,6 +301,10 @@
       }
 
       function loadLeaderboard() {
+        if (!hasSupabase) {
+          rankList.innerHTML = '<li>config.js 설정 후 순위를 불러옵니다.</li>';
+          return;
+        }
         fetch(SUPABASE_URL + '/rest/v1/card_flip_scores?select=player_name,moves,duration_seconds&order=moves.asc&limit=10', {
           headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
         })
